@@ -1,167 +1,94 @@
-[![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/EbtZGzoI)
-[![Open in Codespaces](https://classroom.github.com/assets/launch-codespace-2972f46106e565e64193e422d61a12cf1da4916b45550586e14ef0a7c637dd04.svg)](https://classroom.github.com/open-in-codespaces?assignment_repo_id=23654187)
+# Mini Cloud Log Analyzer — Variante D
 
-# Práctica 1
-
-## Implementación de un Mini Cloud Log Analyzer en ARM64
-
-**Modalidad:** Individual
-**Entorno de trabajo:** AWS Ubuntu ARM64 + GitHub Classroom
-**Lenguaje:** ARM64 Assembly (GNU Assembler) + Bash + GNU Make
+**Práctica 1 | Lenguajes de Interfaz / Ensamblador ARM64**
+**Tecnológico de Tijuana**
+**Autor:** Axel Gael Vallejo Garcia
 
 ---
 
-## Introducción
+## Descripción
 
-Los sistemas modernos de cómputo en la nube generan continuamente registros (*logs*) que permiten monitorear el estado de servicios, detectar fallas y activar alertas ante eventos críticos.
+Este programa analiza un flujo de códigos de estado HTTP leídos desde la entrada estándar (`stdin`) y detecta la primera ocurrencia de **tres errores consecutivos**, donde un error se define como cualquier código de la familia `4xx` (error del cliente) o `5xx` (error del servidor).
 
-En esta práctica se desarrollará un módulo simplificado de análisis de logs, implementado en **ARM64 Assembly**, inspirado en tareas reales de monitoreo utilizadas en sistemas cloud, observabilidad y administración de infraestructura.
+El programa está implementado íntegramente en **ensamblador ARM64** bajo Linux, sin ninguna dependencia de bibliotecas externas. Toda la interacción con el sistema operativo se realiza mediante **syscalls Linux directas** (`read`, `write`, `exit`).
 
-El programa procesará códigos de estado HTTP suministrados mediante entrada estándar (stdin):
-
-```bash id="y1gcmc"
-cat logs.txt | ./analyzer
-```
+Al finalizar el análisis, el programa reporta:
+- La línea exacta (base 1) donde ocurrió el tercer error consecutivo, si fue detectado.
+- Un mensaje informativo en caso de que no se haya alcanzado la condición.
 
 ---
 
-## Objetivo general
+## Entorno de Desarrollo
 
-Diseñar e implementar, en lenguaje ensamblador ARM64, una solución para procesar registros de eventos y detectar condiciones definidas según la variante asignada.
+El código fue compilado y ejecutado de forma **nativa en la nube**, sin ningún tipo de emulación.
 
----
+- **Plataforma:** Amazon Web Services (AWS)
+- **Instancia:** `t4g.micro` — procesador AWS Graviton (ARM64 real)
+- **Sistema Operativo:** Ubuntu ARM64
+- **Ensamblador:** GNU Assembler (`as`)
+- **Enlazador:** GNU Linker (`ld`)
+- **Automatización de compilación:** GNU Make
+- **Captura de evidencia:** `asciinema` grabado directamente en la terminal de la instancia EC2
 
-## Objetivos específicos
-
-El estudiante aplicará:
-
-* programación en ARM64 bajo Linux
-* manejo de registros
-* direccionamiento y acceso a memoria
-* instrucciones de comparación
-* estructuras iterativas en ensamblador
-* saltos condicionales
-* uso de syscalls Linux
-* compilación con GNU Make
-* control de versiones con GitHub Classroom
-
-Estos temas se alinean con contenidos clásicos de flujo de control, herramientas GNU, manejo de datos y convenciones de programación en ensamblador.   
+El uso de una instancia Graviton garantiza que cada instrucción ARM64 escrita en el código fuente se ejecuta sobre hardware físico real de 64 bits, validando la correctitud de las instrucciones, el direccionamiento y las syscalls sin ninguna capa de traducción intermedia.
 
 ---
 
-## Material proporcionado
+## Lógica de la Variante D
 
-Se entregará un repositorio preconfigurado que contiene:
+El objetivo de la Variante D es detectar tres errores HTTP consecutivos sin ningún código exitoso entre ellos.
 
-* plantilla base en ARM64
-* archivo `Makefile`
-* script Bash de ejecución
-* archivo de datos (`logs.txt`)
-* pruebas iniciales
-* secciones marcadas con `TODO`
+### Registros principales utilizados
 
-El estudiante deberá completar la lógica correspondiente.
+- `x19` — Contador de errores consecutivos activos.
+- `x20` — Número de línea actual (incrementa con cada código procesado, base 1).
+- `x21` — Bandera de detección: vale `0` si aún no se han encontrado tres errores consecutivos, o `1` si ya se detectaron.
+- `x22` — Almacena el número de línea donde ocurrió el tercer error consecutivo.
+- `x23` — Acumulador del código HTTP que se está leyendo dígito a dígito.
+- `x24` — Indica si hay al menos un dígito acumulado en `x23` (evita clasificar líneas vacías).
 
----
+### Flujo de clasificación (`clasificar_codigo_d`)
 
-## Variantes de la práctica
+Cuando se completa la lectura de un código HTTP (al encontrar un `\n` o llegar al EOF), se ejecuta la siguiente lógica:
 
-### Variante A
+1. **Si el código es `2xx`:** se reinicia `x19` a `0`. La racha de errores se rompe y el conteo vuelve a empezar.
+2. **Si el código es `4xx` o `5xx`:** se incrementa `x19` en `1`. Si `x19` llega a `3` y la bandera `x21` aún vale `0` (primera detección), se activa `x21 = 1` y se guarda en `x22` la línea actual (`x20`).
+3. **Cualquier otro código** (1xx, 3xx, u otros): no modifica el contador de consecutivos.
 
-Contabilizar:
+Esta lógica garantiza que la condición se evalúa de forma estricta: los tres errores deben ser **adyacentes** en el archivo, sin ningún código exitoso entre ellos.
 
-* respuestas exitosas (2xx)
-* errores del cliente (4xx)
-* errores del servidor (5xx)
+### Parser de entrada
 
----
-
-### Variante B
-
-Determinar el código de estado más frecuente.
-
----
-
-### Variante C
-
-Detectar el primer evento crítico (503).
+La lectura se hace en bloques de hasta `4096` bytes por llamada a `read`. Cada bloque se recorre byte a byte:
+- Los bytes `'0'`–`'9'` se acumulan en `x23` mediante la operación `numero_actual = numero_actual × 10 + dígito`.
+- Al encontrar `'\n'`, si hay dígitos acumulados, se incrementa el contador de línea y se clasifica el código.
+- Al llegar al EOF, si queda un número pendiente (archivo sin salto de línea final), también se procesa.
 
 ---
 
-### Variante D
+## Compilación y Ejecución
 
-Detectar tres errores consecutivos.
-
----
-
-### Variante E
-
-Calcular índice de salud:
-
-```text id="2u4vvx"
-Health Score = 100 - (errores × 10)
-```
-
----
-
-## Compilación
-
-```bash id="bmubtb"
+```bash
+# Compilar
 make
+
+# Ejecutar con el archivo de datos
+cat data/logs_D.txt | ./analyzer
 ```
 
 ---
 
-## Ejecución
+## Evidencia de Ejecución
 
-```bash id="gcqlf2"
-cat logs.txt | ./analyzer
-```
+La siguiente grabación muestra la compilación y ejecución del programa directamente en la instancia EC2 ARM64 en AWS. El archivo `data/logs_D.txt` contiene una secuencia de códigos HTTP donde los tres primeros errores consecutivos ocurren en la **línea 4**, resultado que el programa reporta correctamente.
 
----
+[![Evidencia Asciinema](https://asciinema.org/a/EclQtnDbBijwUMCR.svg)](https://asciinema.org/a/EclQtnDbBijwUMCR)
 
-## Entregables
-
-Cada estudiante deberá entregar en su repositorio:
-
-* archivo fuente ARM64 funcional
-* solución implementada
-* README explicando diseño y lógica utilizada
-* evidencia de ejecución
-* commits realizados en GitHub Classroom
-
----
-
-## Criterios de evaluación
-
-| Criterio                    | Ponderación |
-| --------------------------- | ----------- |
-| Compilación correcta        | 20%         |
-| Correctitud de la solución  | 35%         |
-| Uso adecuado de ARM64       | 25%         |
-| Documentación y comentarios | 10%         |
-| Evidencia de pruebas        | 10%         |
-
----
-
-## Restricciones
-
-No está permitido:
-
-* resolver la lógica en C
-* resolver la lógica en Python
-* modificar la variante asignada
-* omitir el uso de ARM64 Assembly
-
----
-
-## Competencia a desarrollar
-
-Comprender cómo un problema de procesamiento de datos es implementado a nivel máquina mediante instrucciones ARM64.
-
----
-
-## Nota
-
-Aunque este problema puede resolverse fácilmente en lenguajes de alto nivel, el propósito de la práctica es implementar **cómo lo resolvería la arquitectura**, no únicamente obtener el resultado.
-
+Pasos visibles en la grabación:
+- Ejecución de `make`, que invoca `as` para ensamblar y `ld` para enlazar.
+- Ejecución de `cat data/logs_D.txt | ./analyzer`.
+- Salida del programa:
+  ```
+  === Mini Cloud Log Analyzer – Variante D ===
+  Tres errores consecutivos detectados en la linea: 4
+  ```
