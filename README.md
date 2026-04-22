@@ -1,6 +1,6 @@
 # Mini Cloud Log Analyzer — Variante D
 
-**Práctica 1 | Lenguajes de Interfaz / Ensamblador ARM64**
+**Práctica 4.2 | Lenguajes de Interfaz / Ensamblador ARM64**
 **Tecnológico de Tijuana**
 **Autor:** Axel Gael Vallejo Garcia
 
@@ -78,17 +78,17 @@ cat data/logs_D.txt | ./analyzer
 
 ---
 
-## Evidencia de Ejecución
+## Evidencia de Ejecución (Prueba de Carga: 1000 Registros)
 
-La siguiente grabación muestra la compilación y ejecución del programa directamente en la instancia EC2 ARM64 en AWS. El archivo `data/logs_D.txt` contiene una secuencia de códigos HTTP donde los tres primeros errores consecutivos ocurren en la **línea 4**, resultado que el programa reporta correctamente.
+Para validar la robustez del programa, se generó un archivo de 1000 logs utilizando Mockaroo. La grabación demuestra que el sistema procesa grandes volúmenes de datos de forma instantánea y detecta correctamente la primera racha de errores.
 
-[![Evidencia Asciinema](https://asciinema.org/a/EclQtnDbBijwUMCR.svg)](https://asciinema.org/a/EclQtnDbBijwUMCR)
+[![Evidencia Asciinema](https://asciinema.org/a/Mtx6Fl3totd9VwCv.svg)](https://asciinema.org/a/Mtx6Fl3totd9VwCv)
 
-Pasos visibles en la grabación:
-- Ejecución de `make`, que invoca `as` para ensamblar y `ld` para enlazar.
-- Ejecución de `cat data/logs_D.txt | ./analyzer`.
-- Salida del programa:
-  ```
-  === Mini Cloud Log Analyzer – Variante D ===
-  Tres errores consecutivos detectados en la linea: 4
-  ```
+**Detalles visibles en la grabación:**
+1. Uso de `wc -l` para verificar la existencia de las 1000 líneas en el archivo `data/logs_D.txt`.
+2. Compilación nativa en AWS Graviton (ARM64).
+3. Ejecución del analyzer procesando el flujo completo de datos.
+4. Salida del programa:
+   ```text
+   === Mini Cloud Log Analyzer – Variante D ===
+   Tres errores consecutivos detectados en la linea: 3
