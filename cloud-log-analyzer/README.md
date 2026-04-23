@@ -1,9 +1,12 @@
-# Mini Cloud Log Analyzer — Variante D
+# 🌩️ Mini Cloud Log Analyzer — `Variante D`
 
-**Práctica 4.2 | Lenguajes de Interfaz / Ensamblador ARM64**
+**Práctica 4.2** | Lenguajes de Interfaz / Ensamblador ARM64
 **Tecnológico de Tijuana**
-**Autor:** Axel Gael Vallejo Garcia
 
+---
+👨‍💻 **Autor:** Axel Gael Vallejo Garcia
+⚙️ **Stack:** ARM64 Assembly | 🐧 Linux Syscalls
+☁️ **Infraestructura:** AWS EC2 Graviton (Nativo)
 ---
 
 ## Descripción
