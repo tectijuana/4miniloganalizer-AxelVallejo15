@@ -1,158 +1,97 @@
-<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/a44bb0d7-30f9-4fff-95bf-f08277476255" />
+# 🌩️ Mini Cloud Log Analyzer — `Variante D`
 
+**Práctica 4.2** | Lenguajes de Interfaz / Ensamblador ARM64
+**Tecnológico de Tijuana**
 
-# Mini Cloud Log Analyzer (Bash + ARM64 + GNU Make)
+---
+👨‍💻 **Autor:** Axel Gael Vallejo Garcia
+⚙️ **Stack:** ARM64 Assembly | 🐧 Linux Syscalls
+☁️ **Infraestructura:** AWS EC2 Graviton (Nativo)
+---
 
-Práctica universitaria orientada a estudiantes principiantes para reforzar fundamentos de:
-- Ensamblador **ARM64 (AArch64 Linux)**,
-- uso de **syscalls Linux** sin libc,
-- automatización con **Bash**,
-- y flujo de trabajo con **GitHub Classroom**.
+## Descripción
+
+Este programa analiza un flujo de códigos de estado HTTP leídos desde la entrada estándar (`stdin`) y detecta la primera ocurrencia de **tres errores consecutivos**, donde un error se define como cualquier código de la familia `4xx` (error del cliente) o `5xx` (error del servidor).
+
+El programa está implementado íntegramente en **ensamblador ARM64** bajo Linux, sin ninguna dependencia de bibliotecas externas. Toda la interacción con el sistema operativo se realiza mediante **syscalls Linux directas** (`read`, `write`, `exit`).
+
+Al finalizar el análisis, el programa reporta:
+- La línea exacta (base 1) donde ocurrió el tercer error consecutivo, si fue detectado.
+- Un mensaje informativo en caso de que no se haya alcanzado la condición.
 
 ---
 
-## 1) Enunciado formal de la práctica
+## Entorno de Desarrollo
 
-Implemente un analizador de logs de servidor en ARM64 Assembly que reciba por `stdin` una secuencia de códigos HTTP (un entero por línea), y procese la información según la variante asignada por el docente.
+El código fue compilado y ejecutado de forma **nativa en la nube**, sin ningún tipo de emulación.
 
-La versión base proporcionada (Variante A) ya compila y ejecuta, y cuenta:
-- códigos de éxito **2xx**,
-- errores de cliente **4xx**,
-- errores de servidor **5xx**.
+- **Plataforma:** Amazon Web Services (AWS)
+- **Instancia:** `t4g.micro` — procesador AWS Graviton (ARM64 real)
+- **Sistema Operativo:** Ubuntu ARM64
+- **Ensamblador:** GNU Assembler (`as`)
+- **Enlazador:** GNU Linker (`ld`)
+- **Automatización de compilación:** GNU Make
+- **Captura de evidencia:** `asciinema` grabado directamente en la terminal de la instancia EC2
 
-Ejecución esperada:
+El uso de una instancia Graviton garantiza que cada instrucción ARM64 escrita en el código fuente se ejecuta sobre hardware físico real de 64 bits, validando la correctitud de las instrucciones, el direccionamiento y las syscalls sin ninguna capa de traducción intermedia.
+
+---
+
+## Lógica de la Variante D
+
+El objetivo de la Variante D es detectar tres errores HTTP consecutivos sin ningún código exitoso entre ellos.
+
+### Registros principales utilizados
+
+- `x19` — Contador de errores consecutivos activos.
+- `x20` — Número de línea actual (incrementa con cada código procesado, base 1).
+- `x21` — Bandera de detección: vale `0` si aún no se han encontrado tres errores consecutivos, o `1` si ya se detectaron.
+- `x22` — Almacena el número de línea donde ocurrió el tercer error consecutivo.
+- `x23` — Acumulador del código HTTP que se está leyendo dígito a dígito.
+- `x24` — Indica si hay al menos un dígito acumulado en `x23` (evita clasificar líneas vacías).
+
+### Flujo de clasificación (`clasificar_codigo_d`)
+
+Cuando se completa la lectura de un código HTTP (al encontrar un `\n` o llegar al EOF), se ejecuta la siguiente lógica:
+
+1. **Si el código es `2xx`:** se reinicia `x19` a `0`. La racha de errores se rompe y el conteo vuelve a empezar.
+2. **Si el código es `4xx` o `5xx`:** se incrementa `x19` en `1`. Si `x19` llega a `3` y la bandera `x21` aún vale `0` (primera detección), se activa `x21 = 1` y se guarda en `x22` la línea actual (`x20`).
+3. **Cualquier otro código** (1xx, 3xx, u otros): no modifica el contador de consecutivos.
+
+Esta lógica garantiza que la condición se evalúa de forma estricta: los tres errores deben ser **adyacentes** en el archivo, sin ningún código exitoso entre ellos.
+
+### Parser de entrada
+
+La lectura se hace en bloques de hasta `4096` bytes por llamada a `read`. Cada bloque se recorre byte a byte:
+- Los bytes `'0'`–`'9'` se acumulan en `x23` mediante la operación `numero_actual = numero_actual × 10 + dígito`.
+- Al encontrar `'\n'`, si hay dígitos acumulados, se incrementa el contador de línea y se clasifica el código.
+- Al llegar al EOF, si queda un número pendiente (archivo sin salto de línea final), también se procesa.
+
+---
+
+## Compilación y Ejecución
 
 ```bash
-cat logs.txt | ./analyzer
-```
-
----
-
-## 2) Objetivos de aprendizaje
-
-Al finalizar esta práctica, el estudiante será capaz de:
-1. Compilar y enlazar un programa ARM64 sin C ni libc.
-2. Invocar syscalls Linux (`read`, `write`, `exit`).
-3. Parsear enteros desde flujo de bytes (`stdin`).
-4. Diseñar lógica condicional para análisis de códigos HTTP.
-5. Validar resultados con scripts de prueba reproducibles.
-
----
-
-## 3) Estructura del repositorio
-
-```text
-cloud-log-analyzer/
-├── README.md
-├── Makefile
-├── run.sh
-├── src/
-│   └── analyzer.s
-├── data/
-│   ├── logs_A.txt
-│   ├── logs_B.txt
-│   ├── logs_C.txt
-│   ├── logs_D.txt
-│   └── logs_E.txt
-├── tests/
-│   ├── test.sh
-│   └── expected_outputs.txt
-└── instructor/
-    └── VARIANTES.md
-```
-
----
-
-## 4) Requisitos técnicos
-
-- Sistema objetivo: **AWS Ubuntu 24 ARM64**.
-- Arquitectura: **AArch64 Linux**.
-- Ensamblador: **GNU assembler** (o equivalente compatible para construir en entorno alterno).
-- Restricciones:
-  - Sin libc.
-  - Sin lenguaje C.
-  - Solo syscalls Linux + Bash + Make.
-
----
-
-## 5) Flujo sugerido en GitHub Classroom
-
-1. El docente crea la actividad en GitHub Classroom.
-2. Cada estudiante acepta su repositorio individual.
-3. Clona su repositorio en instancia AWS ARM64.
-4. Implementa su variante en `src/analyzer.s`.
-5. Ejecuta:
-   - `make`
-   - `make run`
-   - `make test`
-6. Hace commit/push y entrega el enlace del repositorio.
-
----
-
-## 6) Instrucciones de uso en AWS Ubuntu 24 ARM64
-
-### 6.1 Compilar
-
-```bash
+# Compilar
 make
-```
 
-### 6.2 Ejecutar ejemplo base
-
-```bash
-make run
-```
-
-### 6.3 Ejecutar pruebas
-
-```bash
-make test
-```
-
-### 6.4 Limpiar artefactos
-
-```bash
-make clean
+# Ejecutar con el archivo de datos
+cat data/logs_D.txt | ./analyzer
 ```
 
 ---
 
-## 7) Variantes de práctica
+## Evidencia de Ejecución (Prueba de Carga: 1000 Registros)
 
-- **A**: contar 2xx, 4xx, 5xx.
-- **B**: encontrar código más frecuente.
-- **C**: detectar primer 503.
-- **D**: detectar 3 errores consecutivos.
-- **E**: calcular health score.
+Para validar la robustez del programa, se generó un archivo de 1000 logs utilizando Mockaroo. La grabación demuestra que el sistema procesa grandes volúmenes de datos de forma instantánea y detecta correctamente la primera racha de errores.
 
-Detalles de asignación docente: ver `instructor/VARIANTES.md`.
+[![Evidencia Asciinema](https://asciinema.org/a/Mtx6Fl3totd9VwCv.svg)](https://asciinema.org/a/Mtx6Fl3totd9VwCv)
 
----
-
-## 8) Rúbrica propuesta
-
-Toda solución debe tener:
-1. Encabezado del programador
-2. Pseudocódigo
-3. Código ARM64 comentado
-
-| Criterio | Ponderación |
-|---|---:|
-| Correctitud funcional de la variante asignada | 40% |
-| Dominio técnico de ARM64 + syscalls | 25% |
-| Pruebas automatizadas y reproducibilidad | 20% |
-| Calidad de documentación y claridad de código | 15% |
-
-### Criterios de descuento sugeridos
-- No compila en ARM64: hasta -40%.
-- Usa C/libc: evaluación inválida por incumplir restricción.
-- Sin evidencia de pruebas: hasta -20%. Utiliar Asciinema (con su nombre y preferente), o tambien LOOM.com compartido link
-
----
-
-## 9) Notas para estudiantes
-
-- Lean y entiendan el pseudocódigo al inicio de `src/analyzer.s`.
-- Mantengan comentarios técnicos claros y breves.
-- Trabajen incrementalmente: primero parser, luego lógica de variante, luego pruebas.
-- Si trabajan en host x86_64, se recomienda emulación con `qemu-aarch64` o compilar/ejecutar directamente en AWS ARM64.
+**Detalles visibles en la grabación:**
+1. Uso de `wc -l` para verificar la existencia de las 1000 líneas en el archivo `data/logs_D.txt`.
+2. Compilación nativa en AWS Graviton (ARM64).
+3. Ejecución del analyzer procesando el flujo completo de datos.
+4. Salida del programa:
+   ```text
+   === Mini Cloud Log Analyzer – Variante D ===
+   Tres errores consecutivos detectados en la linea: 3
